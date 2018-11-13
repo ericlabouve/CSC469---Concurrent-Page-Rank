@@ -1,4 +1,4 @@
-graph {
+digraph {
 a -> b
 b -> c
 c -> a
