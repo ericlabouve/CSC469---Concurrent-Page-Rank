@@ -113,7 +113,7 @@ func main() {
 	// Crawl the web breadth-first,
 	// starting from the command-line arguments.
 	urls := []string{calpoly_url}
-	filename := flag.String("filename", "calpoly.gv", "name of file to create")
+	filename := flag.String("f", "calpoly.gv", "name of file to create")
 	flag.Parse()
 	fmt.Printf("Writing to file dot_files/%s\n", *filename)
 	filepath := fmt.Sprintf("../dot_files/%s", *filename)
