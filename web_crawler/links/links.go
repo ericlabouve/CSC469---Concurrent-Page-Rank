@@ -43,7 +43,7 @@ func Extract(url string) ([]string, error) {
 					continue // ignore bad URLs
 				}
 				// only save url if it is in the calpoly.edu domain
-				if strings.Contains(link.String(), "calpoly.edu") {
+				if strings.Contains(link.String(), "calpoly.edu") && strings.Contains(link.String(), "http") {
 					links = append(links, link.String())
 				}
 			}
