@@ -16,6 +16,8 @@ import (
 )
 
 var calpoly_url string = "https://www.calpoly.edu"
+var usr string
+var pass string
 
 //!+createFile
 // create a file given filename
@@ -85,10 +87,11 @@ func breadthFirst(f func(item string) []string, fp *os.File, worklist []string) 
 			worklist = append(worklist, val...) // append new url to worklist
 			writeToFile(fp, origin, val) // write new connections to file in form "origin -> url"
 		}
+
 		count++
 		if count > 1 {
 			break
-		}
+		}	
 	}
 
 
@@ -99,7 +102,7 @@ func breadthFirst(f func(item string) []string, fp *os.File, worklist []string) 
 //!+crawl
 func crawl(url string) []string {
 	fmt.Println(url)
-	list, err := links.Extract(url)
+	list, err := links.Extract(url, usr, pass)
 	if err != nil {
 		log.Print(err)
 	}
@@ -114,6 +117,8 @@ func main() {
 	// starting from the command-line arguments.
 	urls := []string{calpoly_url}
 	filename := flag.String("f", "calpoly.gv", "name of file to create")
+	flag.StringVar(&usr, "u", "", "calpoly username")
+	flag.StringVar(&pass, "p", "", "calpoly password")
 	flag.Parse()
 	fmt.Printf("Writing to file dot_files/%s\n", *filename)
 	filepath := fmt.Sprintf("../dot_files/%s", *filename)

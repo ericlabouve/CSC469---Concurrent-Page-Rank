@@ -15,11 +15,13 @@ import (
 
 // Extract makes an HTTP GET request to the specified URL, parses
 // the response as HTML, and returns the links in the HTML document.
-func Extract(url string) ([]string, error) {
+func Extract(url, username, passwd string) ([]string, error) {
+
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
 	}
+
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		return nil, fmt.Errorf("getting %s: %s", url, resp.Status)
