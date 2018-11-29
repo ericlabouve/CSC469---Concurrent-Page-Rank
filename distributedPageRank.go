@@ -1,3 +1,9 @@
+// Distributed Page Rank
+// Idea:
+// Split the graph by domain addresses.
+// Then run page rank on the local cluster.
+// Report URLs with highest page rank scores for each domain and compare with seq. results.
+
 package main
 
 import (
@@ -8,32 +14,35 @@ import (
 	"log"
 	"strings"
 	"sort"
+	"sync"
 	//"time"
 )
 
-// List of all the nodes
-var nodes []string
-// Maps a node to a list of incoming nodes
-var adjacencyList = map[string][]string{}
-// Maps a node to its number of outlinks
-var outLinks = map[string]int{}
-// Old page rank values
-var pageRankOld = map[string]float32{}
-// New page rank values
-var pageRankNew = map[string]float32{}
+var wg sync.WaitGroup
 
-func printGraph() {
-	for _, node := range nodes {
-		fmt.Printf("%s outlinks: %d\n", node, outLinks[node])
-	}
+// Structure hold all information for each subgraph 
+type Subgraph struct {
+	// Name of the domain
+	domainName string
+	// List of all the nodes
+	nodes []string
+	// Maps a node to a list of incoming nodes
+	adjacencyList map[string][]string
+	// Maps a node to its number of outlinks
+	outLinks map[string]int
+	// Old page rank values
+	pageRankOld map[string]float32
+	// New page rank values
+	pageRankNew map[string]float32
+}
 
-	for k, v := range adjacencyList { 
-		s := ""
-		for _, node := range v {
-			s += node + ", "
-		}
-		fmt.Printf("%s inlinks: %s\n", k, s)
-	}
+func newSubgraph() *Subgraph {
+	g := new(Subgraph)
+	g.adjacencyList = make(map[string][]string)
+	g.outLinks = make(map[string]int)
+	g.pageRankOld = make(map[string]float32)
+	g.pageRankNew = make(map[string]float32)
+	return g
 }
 
 type Pair struct {
@@ -41,18 +50,17 @@ type Pair struct {
 	pageRank float32
 }
 
-// Print the nodes with the top 20 page rank scores for testing
+// Print the nodes with the top 'num' page rank scores for testing
 // Results are compared against a java implementation on the same dataset
-func printTop20() {
+func printTop(subGraph *Subgraph, num int) {
 	tupleList := []Pair{}
-	for k, v := range pageRankNew {
+	for k, v := range subGraph.pageRankNew {
 		tupleList = append(tupleList, Pair{k, v})
 	}
 	sort.Slice(tupleList, func(i, j int) bool {
   		return tupleList[i].pageRank > tupleList[j].pageRank
 	})
-	fmt.Printf("Top 20:\n")
-	for i:=0; i<20; i++ {
+	for i:=0; i<num; i++ {
 		p := tupleList[i]
 		fmt.Printf("(%s, %f)", p.url, p.pageRank)
 	}
@@ -85,20 +93,20 @@ func deepCopyMap(m map[string]float32) map[string]float32 {
 // Random Click Probability
 // The probability that a user will reach this URL if a user selects a 
 // node from the graph at random
-func randClickProb(d float32) float32 {
-	return (1 - d) * (float32(1) / float32(len(nodes)))
+func randClickProb(subGraph *Subgraph, d float32) float32 {
+	return (1 - d) * (float32(1) / float32(len(subGraph.nodes)))
 }
 
 // Prestige = a measure of how important a node is by counting its incoming edges
 // The probability that a user will reach this URL from another URL
-func hyperLinkClick(node string, d float32) float32 {
+func hyperLinkClick(subGraph *Subgraph, node string, d float32) float32 {
 	prestige := float32(0)
 	// Nodes that do not have any in-edges have a prestige of zero
-	if _, ok := adjacencyList[node]; ok {
+	if _, ok := subGraph.adjacencyList[node]; ok {
 		// For each node that has an edge pointing to the current node
-		for _, inNode := range adjacencyList[node] {
+		for _, inNode := range subGraph.adjacencyList[node] {
 			// Will never divide by zero since inNode points to node
-			prestige += pageRankOld[inNode] / float32(outLinks[inNode])
+			prestige += subGraph.pageRankOld[inNode] / float32(subGraph.outLinks[inNode])
 		}
 	}
 	return d * prestige
@@ -106,13 +114,13 @@ func hyperLinkClick(node string, d float32) float32 {
 
 // Normalize values in the map to sum to one
 // Normalize because we want the sum of probabilities to equal one
-func normalizePageRankNew() {
+func normalizePageRankNew(subGraph *Subgraph) {
 	sum := float32(0)
-	for _, v := range pageRankNew {
+	for _, v := range subGraph.pageRankNew {
 		sum += v
 	}
-	for k, v := range pageRankNew {
-		pageRankNew[k] = v / sum
+	for k, v := range subGraph.pageRankNew {
+		subGraph.pageRankNew[k] = v / sum
 	}
 }
 
@@ -130,40 +138,48 @@ func normalizePageRankNew() {
 // This equation states that the probability of visiting a node, i, is the sum of:
 // 		1. A random click probability
 //		2. The prestige of node, i.
-func pageRank(d float32, epsilon float32) {
+func pageRank(subGraph *Subgraph, d float32, epsilon float32) {
 	// Continue to calculate page rank until a minimum threshold is reached
 	// The threshold is a measure of the graph's change, so we quit when the
 	// the graph stops changing.
 	for {
-		pageRankOld = deepCopyMap(pageRankNew)
+		subGraph.pageRankOld = deepCopyMap(subGraph.pageRankNew)
 		// Calculate page rank for each URL
-		for _, url := range nodes {
-			randomClick := randClickProb(d);
-			hyperLinkClick := hyperLinkClick(url, d);
-			pageRankNew[url] = randomClick + hyperLinkClick
+		for _, url := range subGraph.nodes {
+			randomClick := randClickProb(subGraph, d);
+			hyperLinkClick := hyperLinkClick(subGraph, url, d);
+			subGraph.pageRankNew[url] = randomClick + hyperLinkClick
 		}
 		// Normalize because we want the sum of probabilities to equal one
-		normalizePageRankNew()
-		if distance(pageRankOld, pageRankNew) < epsilon {
-			fmt.Printf("Done\n")
+		normalizePageRankNew(subGraph)
+		if distance(subGraph.pageRankOld, subGraph.pageRankNew) < epsilon {
 			break
 		}
 	}
 }
 
+
 // Normalizes all page rank values to sum to one
-func initPageRank() {
-	numNodes := len(nodes)
-	for _, node := range nodes {
-		pageRankNew[node] = float32(1)/float32(numNodes)
+func initPageRank(subGraph *Subgraph) {
+	numNodes := len(subGraph.nodes)
+	for _, node := range subGraph.nodes {
+		subGraph.pageRankNew[node] = float32(1)/float32(numNodes)
 	}
 }
+
+// Initializes and computes the page rank of the subgraph
+func localizedPageRank(subGraph *Subgraph) {
+	initPageRank(subGraph)
+	pageRank(subGraph, 0.9, 0.0001)
+	wg.Done()
+}
+
 
 // Reads the dot file and fills out:
 // 	  1. nodes
 //    2. adjacencyList
 //	  3. outLinks
-func readDotFile(path string) {
+func readDotFileByDomain(path string, domain string) *Subgraph {
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -171,33 +187,40 @@ func readDotFile(path string) {
 	defer file.Close()
 	// Map to keep track if we have seen node before
 	visitedURL := make(map[string]bool)
+	subgraph := newSubgraph()
+	subgraph.domainName = domain
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		s := strings.Split(scanner.Text(), "->")
 		if len(s) == 2 {
 			src := strings.TrimSpace(s[0])
-			dest := strings.TrimSpace(strings.Replace(s[1], ";", "", -1))
-			// Add to nodes list if we have not come across this url before
-			if _, ok := visitedURL[src]; !ok {
-				visitedURL[src] = true
-				nodes = append(nodes, src)
-				outLinks[src] = 0
+			// CHECK IF THE SOURCE LINK IS PART OF THE DOMAIN
+			if strings.Contains(src, domain+".calpoly.edu") {
+				dest := strings.TrimSpace(strings.Replace(s[1], ";", "", -1))
+				// Add to nodes list if we have not come across this url before
+				if _, ok := visitedURL[src]; !ok {
+					visitedURL[src] = true
+					subgraph.nodes = append(subgraph.nodes, src)
+					subgraph.outLinks[src] = 0
+				}
+				if _, ok := visitedURL[dest]; !ok {
+					visitedURL[dest] = true
+					subgraph.nodes = append(subgraph.nodes, dest)
+				}
+				// Add to adjacencyList
+				if _, ok := subgraph.adjacencyList[dest]; !ok {
+					subgraph.adjacencyList[dest] = make([]string, 0)
+				}
+				subgraph.adjacencyList[dest] = append(subgraph.adjacencyList[dest], src)
+				
+				// Add to outLinks
+				subgraph.outLinks[src]++
 			}
-			if _, ok := visitedURL[dest]; !ok {
-				visitedURL[dest] = true
-				nodes = append(nodes, dest)
-			}
-			// Add to adjacencyList
-			if _, ok := adjacencyList[dest]; !ok {
-				adjacencyList[dest] = make([]string, 0)
-			}
-			adjacencyList[dest] = append(adjacencyList[dest], src)
-			
-			// Add to outLinks
-			outLinks[src]++
 		}		
 	}
+	return subgraph
 }
+
 
 // Loops through each URL and saves a copy of the string that
 // resides in the location in between http:// and calpoly.edu
@@ -234,60 +257,29 @@ func getDomains(path string) []string {
     return domains
 }
 
-func printTopDomains() {
+func main() {
 	dotFile := "./dot_files/auth.gv"
 	// Split URLs by domain
 	domains := getDomains(dotFile)
-
-	tupleList := []Pair{}
-	for k, v := range pageRankNew {
-		tupleList = append(tupleList, Pair{k, v})
+	// Array to hold pointers to subgraphs for each goroutine
+	subgraphs := make([]*Subgraph, len(domains))
+	// Read dot files by domain
+	for idx, domain := range domains {
+		subgraph := readDotFileByDomain(dotFile, domain)
+		subgraphs[idx] = subgraph
 	}
-	sort.Slice(tupleList, func(i, j int) bool {
-  		return tupleList[i].pageRank > tupleList[j].pageRank
-	})
-
-	// Map to keep track if we have seen domain before
-	visitedDomain := make(map[string]bool)
-	for _, domain := range domains {
-		visitedDomain[domain] = false
-	}
-	// Loop through sorted list until we have gathered all top domains
 	count := 0
-	for i:=0; count < len(domains); i++ {
-		// Get the URL's domain
-		pieces := strings.Split(tupleList[i].url, string('.'))
-		// Get location of "calpoly" and use the domain immediately before it
-		for idx, domainStr := range pieces {
-			if "calpoly" == domainStr && idx > 0 {
-				domain := strings.Replace(pieces[idx - 1], "https://", "", -1)
-				domain = strings.Replace(domain, "http://", "", -1)
-				if visitedDomain[domain] == false {
-					visitedDomain[domain] = true
-					count++
-					fmt.Printf("%s:\t(%s, %f)\n", domain, tupleList[i].url, tupleList[i].pageRank)	
-				}
-				
-			}
-		}
+	// Launch a new goroutine for each subgraph
+	for _, subGraphPtr := range subgraphs {
+		wg.Add(1)
+		count++
+		go localizedPageRank(subGraphPtr)
 	}
-
-	fmt.Printf("Top 20:\n")
-	for i:=0; i<20; i++ {
-		p := tupleList[i]
-		fmt.Printf("(%s, %f)", p.url, p.pageRank)
+	fmt.Printf("Waiting for %d goroutines\n", count)
+	wg.Wait()
+	// Print top URL from each subgraph
+	for _, subgraph := range subgraphs {
+		fmt.Printf("\n%s:\t", subgraph.domainName)
+		printTop(subgraph, 1)
 	}
 }
-
-func main() {
-	// Read in dot graph
-	readDotFile("./dot_files/calpoly.gv")
-	// Normalize initialize starting page rank values
-	initPageRank()
-	// Execute the sequential page rank algorithm
-	pageRank(0.9, 0.0001)
-	// Testing purposes
-	// printTop20()
-	printTopDomains()
-}
-
