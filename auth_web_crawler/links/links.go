@@ -52,8 +52,12 @@ func Extract(url, username, passwd string) ([]string, error) {
 					continue // ignore bad URLs
 				}
 				// only save url if it is in the calpoly.edu domain
-				if strings.Contains(link.String(), "calpoly.edu") && strings.Contains(link.String(), "http") {
-					links = append(links, link.String())
+				link_str := link.String()
+				if strings.Contains(link_str, "calpoly.edu") && strings.Contains(link_str, "http") {
+					if strings.Contains(link_str, "#") {
+						link_str = strings.Split(link_str, "#")[0]
+					}
+					links = append(links, link_str)
 				}
 			}
 		}
