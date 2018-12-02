@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"regexp"
 	"golang.org/x/net/html"
 )
 
@@ -53,10 +54,24 @@ func Extract(url, username, passwd string) ([]string, error) {
 				}
 				// only save url if it is in the calpoly.edu domain
 				link_str := link.String()
-				if strings.Contains(link_str, "calpoly.edu") && strings.Contains(link_str, "http") {
+				regex := regexp.MustCompile("http")
+				num_instances := len(regex.FindAllStringIndex(link_str, -1))
+				
+				if strings.Contains(link_str, "calpoly.edu") && num_instances == 1 {
 					if strings.Contains(link_str, "#") {
 						link_str = strings.Split(link_str, "#")[0]
 					}
+					if strings.Contains(link_str, "www") {
+						regex = regexp.MustCompile("www.")
+						link_str = string(regex.ReplaceAll([]byte(link_str), []byte("")))
+					}
+
+					// if !strings.Contains(link_str, "www") {
+					// 	regex2 := regexp.MustCompile("://")
+					// 	url_arr := regex2.Split(link_str, 2)
+					// 	link_str = url_arr[0] + "://www." + url_arr[1]
+					// }
+
 					links = append(links, link_str)
 				}
 			}

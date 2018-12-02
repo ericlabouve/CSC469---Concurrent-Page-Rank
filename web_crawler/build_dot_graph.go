@@ -88,10 +88,6 @@ func breadthFirst(f func(item string) []string, fp *os.File, worklist []string) 
 			writeToFile(fp, origin, val) // write new connections to file in form "origin -> url"
 		}
 
-		count++
-		if count > 1 {
-			break
-		}	
 	}
 
 

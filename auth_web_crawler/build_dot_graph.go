@@ -89,7 +89,7 @@ func breadthFirst(f func(item string) []string, fp *os.File, worklist []string) 
 		}
 
 		count++
-		if count > 1 {
+		if count > 2 {
 			break
 		}	
 	}
