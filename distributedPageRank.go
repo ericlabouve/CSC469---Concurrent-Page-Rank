@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sort"
 	"sync"
-	//"time"
+	"time"
 )
 
 var wg sync.WaitGroup
@@ -222,6 +222,15 @@ func readDotFileByDomain(path string, domain string) *Subgraph {
 }
 
 
+func isDomain(src, domain string) bool {
+	if strings.Contains(src, domain+".calpoly.edu") {
+		return true
+	} else {
+		return false
+	}
+}
+
+
 // Loops through each URL and saves a copy of the string that
 // resides in the location in between http:// and calpoly.edu
 // For example, http://ceng.calpoly.edu/ will save "ceng"
@@ -257,6 +266,62 @@ func getDomains(path string) []string {
     return domains
 }
 
+func combineSubgraphs(subgraphs []*Subgraph) *Subgraph {
+	globalGraph := newSubgraph()
+	visitedURL := make(map[string]bool)
+	// Merge subgraph elements
+	for _, subgraph := range subgraphs {
+		// Combine the nodes list
+		for _, url := range subgraph.nodes {
+			if isDomain(url, subgraph.domainName) {
+				if _, ok := visitedURL[url]; !ok { 
+					visitedURL[url] = true
+					globalGraph.nodes = append(globalGraph.nodes, url)
+				}
+			}
+		}
+	}
+	visitedURL = make(map[string]bool)
+	for _, subgraph := range subgraphs {
+		// Combine the adjecencyList map
+		for url, value := range subgraph.adjacencyList {
+			if isDomain(url, subgraph.domainName) {
+				if _, ok := visitedURL[url]; !ok { 
+					visitedURL[url] = true
+					globalGraph.adjacencyList[url] = value
+				}
+			}
+		}
+	}
+	visitedURL = make(map[string]bool)
+	for _, subgraph := range subgraphs {
+		// Combine the outLinks map
+		for url, value := range subgraph.outLinks {
+			if isDomain(url, subgraph.domainName) {
+				if _, ok := visitedURL[url]; !ok { 
+					visitedURL[url] = true
+					globalGraph.outLinks[url] = value
+				}
+			}
+		}
+	}
+	visitedURL = make(map[string]bool)
+	for _, subgraph := range subgraphs {
+		// Combine the pageRankNew map
+		for url, value := range subgraph.pageRankNew {
+			if isDomain(url, subgraph.domainName) {
+				if _, ok := visitedURL[url]; !ok { 
+					visitedURL[url] = true
+					globalGraph.pageRankNew[url] = value
+				}
+			}
+		}
+	}
+	return globalGraph
+}
+
+
+// Would like to time just the page rank execution times
 func main() {
 	dotFile := "./dot_files/auth.gv"
 	// Split URLs by domain
@@ -268,6 +333,9 @@ func main() {
 		subgraph := readDotFileByDomain(dotFile, domain)
 		subgraphs[idx] = subgraph
 	}
+
+	start := time.Now()
+
 	count := 0
 	// Launch a new goroutine for each subgraph
 	for _, subGraphPtr := range subgraphs {
@@ -275,11 +343,27 @@ func main() {
 		count++
 		go localizedPageRank(subGraphPtr)
 	}
-	fmt.Printf("Waiting for %d goroutines\n", count)
 	wg.Wait()
 	// Print top URL from each subgraph
-	for _, subgraph := range subgraphs {
-		fmt.Printf("\n%s:\t", subgraph.domainName)
-		printTop(subgraph, 1)
-	}
+	// for _, subgraph := range subgraphs {
+	// 	fmt.Printf("\n%s:\t", subgraph.domainName)
+	// 	printTop(subgraph, 1)
+	// }
+
+	copyTime := time.Now()
+
+	// Combine subgraphs into a global graph
+	globalGraph := combineSubgraphs(subgraphs)
+
+	// Removes time for copying over datastructures
+	// This time can be igored because we are working
+	// in the same memory space
+	copyTimeElapsed := time.Since(copyTime)
+
+	// Run sequential PR on global graph
+	normalizePageRankNew(globalGraph)
+	pageRank(globalGraph, 0.9, 0.0001)	
+
+	elapsed := time.Since(start)
+	fmt.Printf("Concurrent Time = %s\n", elapsed - copyTimeElapsed)
 }
