@@ -62,7 +62,6 @@ func breadthFirst(f func(item string) []string, fp *os.File, worklist []string) 
 	c := make(chan []string) // channel to send list of discovered urls
 	u := make(chan string) // channel to send original url
 
-	count := 0
 	for len(worklist) > 0 {
 		items := worklist
 		worklist = nil
