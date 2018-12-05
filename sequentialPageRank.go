@@ -8,7 +8,7 @@ import (
 	"log"
 	"strings"
 	"sort"
-	//"time"
+	"time"
 )
 
 // List of all the nodes
@@ -281,13 +281,16 @@ func printTopDomains() {
 
 func main() {
 	// Read in dot graph
-	readDotFile("./dot_files/calpoly.gv")
+	readDotFile("./dot_files/auth.gv")
+	start := time.Now()
 	// Normalize initialize starting page rank values
 	initPageRank()
 	// Execute the sequential page rank algorithm
 	pageRank(0.9, 0.0001)
+	elapsed := time.Since(start)
+	fmt.Printf("Linear Time = %s\n", elapsed)
 	// Testing purposes
 	// printTop20()
-	printTopDomains()
+	// printTopDomains()
 }
 
