@@ -1,4 +1,6 @@
-# CSC469---Concurrent-Page-Rank
+# Concurrent-Page-Rank
+
+A concurrent implementation of Page Rank written with Golang
 
 Instructions:
 ```
